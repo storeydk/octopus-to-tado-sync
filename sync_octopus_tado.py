@@ -202,9 +202,10 @@ if __name__ == "__main__":
     args = parse_args()
 
     # Get total consumption from Octopus Energy API
-    consumption = get_meter_reading_total_consumption(
+    consumption = get_meter_reading_total_consumption_debug(
         args.octopus_api_key, args.mprn, args.gas_serial_number, show_intervals=True
     )
+
 
     # Send the total consumption to Tado
     send_reading_to_tado(args.tado_email, args.tado_password, consumption)
