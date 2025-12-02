@@ -6,32 +6,101 @@ from requests.auth import HTTPBasicAuth
 from playwright.async_api import async_playwright
 from PyTado.interface import Tado
 
+import json
 
-def get_meter_reading_total_consumption(api_key, mprn, gas_serial_number):
+def get_meter_reading_total_consumption_debug(api_key, mprn, gas_serial_number, show_intervals=False):
     """
-    Retrieves total gas consumption from the Octopus Energy API for the given gas meter point and serial number.
+    ChatGPT version: Retrieves total gas consumption from the Octopus Energy API with detailed
+    debugging of the parsed response packet.
     """
+
     period_from = datetime(2000, 1, 1, 0, 0, 0)
-    url = f"https://api.octopus.energy/v1/gas-meter-points/{mprn}/meters/{gas_serial_number}/consumption/?group_by=quarter&period_from={period_from.isoformat()}Z"
+    url = (
+        f"https://api.octopus.energy/v1/gas-meter-points/{mprn}"
+        f"/meters/{gas_serial_number}/consumption/?group_by=quarter"
+        f"&period_from={period_from.isoformat()}Z"
+    )
+
     total_consumption = 0.0
 
+    page = 1
     while url:
+        print(f"\n=== 🟦 Requesting page {page} ===")
+        print(f"URL: {url}")
+
         response = requests.get(url, auth=HTTPBasicAuth(api_key, ""))
 
-        if response.status_code == 200:
-            meter_readings = response.json()
-            total_consumption += sum(
-                interval["consumption"] for interval in meter_readings["results"]
-            )
-            url = meter_readings.get("next", "")
-        else:
-            print(
-                f"Failed to retrieve data. Status code: {response.status_code}, Message: {response.text}"
-            )
+        if response.status_code != 200:
+            print(f"❌ Request failed ({response.status_code}): {response.text}")
             break
 
-    print(f"Total consumption is {total_consumption}")
+        # Parse JSON
+        meter_readings = response.json()
+
+        # Debug: show the top-level structure
+        print("\n--- 📦 Response Packet Keys ---")
+        print(list(meter_readings.keys()))
+
+        # Debug: count results
+        results = meter_readings.get("results", [])
+        print(f"Number of results in this page: {len(results)}")
+
+        # Debug: show the first record for inspection
+        if results:
+            print("\n--- 🔍 First Record Structure ---")
+            print(json.dumps(results[0], indent=4))
+        else:
+            print("⚠️ No results found in this page.")
+
+        # Debug: show next-page URL
+        next_url = meter_readings.get("next")
+        print(f"\nNext page URL: {next_url}")
+
+        # Optional: show each interval consumption value
+        if show_intervals:
+            print("\n--- 🔢 Interval Consumption Values ---")
+            for idx, interval in enumerate(results):
+                print(f"{idx+1}: {interval.get('consumption')}")
+
+        # Aggregate consumption
+        page_consumption = sum(interval.get("consumption", 0.0) for interval in results)
+        total_consumption += page_consumption
+
+        print(f"\nPage consumption = {page_consumption}")
+        print(f"Running total = {total_consumption}")
+
+        # Pagination
+        url = next_url
+        page += 1
+
+    print(f"\n=== ✅ TOTAL CONSUMPTION = {total_consumption} ===")
     return total_consumption
+
+#def get_meter_reading_total_consumption(api_key, mprn, gas_serial_number):
+#    """
+#    Retrieves total gas consumption from the Octopus Energy API for the given gas meter point and serial number.
+#    """
+#    period_from = datetime(2000, 1, 1, 0, 0, 0)
+#    url = f"https://api.octopus.energy/v1/gas-meter-points/{mprn}/meters/{gas_serial_number}/consumption/?group_by=quarter&period_from={period_from.isoformat()}Z"
+#    total_consumption = 0.0
+#
+#    while url:
+#        response = requests.get(url, auth=HTTPBasicAuth(api_key, ""))
+#
+#        if response.status_code == 200:
+#            meter_readings = response.json()
+#            total_consumption += sum(
+#                interval["consumption"] for interval in meter_readings["results"]
+#            )
+#            url = meter_readings.get("next", "")
+#        else:
+#            print(
+#                f"Failed to retrieve data. Status code: {response.status_code}, Message: {response.text}"
+#            )
+#            break
+#
+#    print(f"Total consumption is {total_consumption}")
+#    return total_consumption
 
 
 async def browser_login(url, username, password):
@@ -134,7 +203,7 @@ if __name__ == "__main__":
 
     # Get total consumption from Octopus Energy API
     consumption = get_meter_reading_total_consumption(
-        args.octopus_api_key, args.mprn, args.gas_serial_number
+        args.octopus_api_key, args.mprn, args.gas_serial_number, show_intervals=True
     )
 
     # Send the total consumption to Tado
